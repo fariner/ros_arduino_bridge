@@ -28,6 +28,7 @@ from math import sin, cos, pi
 from geometry_msgs.msg import Quaternion, Twist, Pose
 from nav_msgs.msg import Odometry
 from tf.broadcaster import TransformBroadcaster
+from sensor_msgs.msg import JointState #visbot
  
 """ Class to receive Twist commands and publish Odometry data """
 class BaseController:
@@ -92,6 +93,10 @@ class BaseController:
         
         rospy.loginfo("Started base controller for a base of " + str(self.wheel_track) + "m wide with " + str(self.encoder_resolution) + " ticks per rev")
         rospy.loginfo("Publishing odometry data at: " + str(self.rate) + " Hz using " + str(self.base_frame) + " as base frame")
+
+        self.pub = rospy.Publisher('WheelsState', JointState, queue_size=10) #visbot
+        self.countL=0#visbot
+        self.countR=0#visbot
         
     def setup_pid(self, pid_params):
         # Check to see if any PID parameters are missing
@@ -130,7 +135,17 @@ class BaseController:
             dt = now - self.then
             self.then = now
             dt = dt.to_sec()
-            
+
+            #calculate wheels joint state VISBOT
+            pp = JointState()
+            pp.name=["EjeFront1TOMfront1","EjeBack1TOMback1","EjeFront2TOMfront2","EjeBack2TOMback2"]
+            if self.enc_left != None:#equal to odometry calculation 
+            	self.countL=self.countL+((left_enc - self.enc_left)*((2*pi)/self.encoder_resolution))#the position of the wheel is acumulative
+            if self.enc_right != None:
+            	self.countR=self.countR+((right_enc - self.enc_right)*((2*pi)/self.encoder_resolution))
+	    pp.position=[self.countL,self.countL,self.countR,self.countR]
+            self.pub.publish(pp)
+
             # calculate odometry
             if self.enc_left == None:
                 dright = 0
@@ -210,6 +225,7 @@ class BaseController:
             # Set motor speeds in encoder ticks per PID loop
             if not self.stopped:
                 self.arduino.drive(self.v_left, self.v_right)
+		#print "l=",self.v_left,"r=",self.v_right
                 
             self.t_next = now + self.t_delta
             
