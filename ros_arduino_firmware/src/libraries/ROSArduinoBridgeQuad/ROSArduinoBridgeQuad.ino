@@ -1,5 +1,5 @@
 /*********************************************************************
- *  ROSArduinoBridge
+ *  ROSArduinoBridgeQuad
  
     A set of simple serial commands to control a differential drive
     robot and receive back sensor and odometry data. Default 
@@ -7,6 +7,11 @@
     controller shield + Robogaia Mega Encoder shield.  Edit the
     readEncoder() and setMotorSpeed() wrapper functions if using 
     different motor controller or encoder method.
+    
+    Francisco Domingue Mateos
+    30/05/2015
+    Extended to control 4 wheels robots, but only receive 2 wheel orders.
+    Back ann front wheels get the same motor speed order.
 
     Created for the Pi Robot Project: http://www.pirobot.org
     and the Home Brew Robotics Club (HBRC): http://hbrobotics.org
@@ -45,26 +50,32 @@
  *  POSSIBILITY OF SUCH DAMAGE.
  *********************************************************************/
 
-//#define USE_BASE      // Enable the base controller code
-#undef USE_BASE     // Disable the base controller code
+#define USE_BASE      // Enable the base controller code
+//#undef USE_BASE     // Disable the base controller code
 
 /* Define the motor controller and encoder library you are using */
 #ifdef USE_BASE
+   /* Generic dual motor driver L289 compatible*/
+   //#define DUAL_MOTOR_DRIVER
+   /* Generic quad motor driver L289 compatible*/
+   #define QUAD_MOTOR_DRIVER
    /* The Pololu VNH5019 dual motor driver shield */
-   #define POLOLU_VNH5019
+   //#define POLOLU_VNH5019
 
    /* The Pololu MC33926 dual motor driver shield */
    //#define POLOLU_MC33926
 
    /* The RoboGaia encoder shield */
-   #define ROBOGAIA
+   //#define ROBOGAIA
    
-   /* Encoders directly attached to Arduino board */
+   /* Encoders for two wheels, directly attached to Arduino board */
    //#define ARDUINO_ENC_COUNTER
+   /* Encoders for four wheels, directly attached to Arduino board */
+   #define ARDUINO_ENC_COUNTER_QUAD
 #endif
 
-#define USE_SERVOS  // Enable use of PWM servos as defined in servos.h
-//#undef USE_SERVOS     // Disable use of PWM servos
+//#define USE_SERVOS  // Enable use of PWM servos as defined in servos.h
+#undef USE_SERVOS     // Disable use of PWM servos
 
 /* Serial port baud rate */
 #define BAUDRATE     57600
@@ -101,7 +112,9 @@
   #include "diff_controller.h"
 
   /* Run the PID loop at 30 times per second */
-  #define PID_RATE           30     // Hz
+  //#define PID_RATE           30     // Hz
+  /* Run the PID loop at 10 times per second */
+  #define PID_RATE           10     // Hz
 
   /* Convert the rate into an interval */
   const int PID_INTERVAL = 1000 / PID_RATE;
@@ -111,7 +124,7 @@
 
   /* Stop the robot if it hasn't received a movement command
    in this number of milliseconds */
-  #define AUTO_STOP_INTERVAL 2000
+  #define AUTO_STOP_INTERVAL 20000
   long lastMotorCommand = AUTO_STOP_INTERVAL;
 #endif
 
@@ -184,11 +197,11 @@ int runCommand() {
     break;
 #ifdef USE_SERVOS
   case SERVO_WRITE:
-    servos[arg1].setTargetPosition(arg2);
+    servos[arg1].write(arg2);
     Serial.println("OK");
     break;
   case SERVO_READ:
-    Serial.println(servos[arg1].getServo().read());
+    Serial.println(servos[arg1].read());
     break;
 #endif
     
@@ -207,12 +220,21 @@ int runCommand() {
     /* Reset the auto stop timer */
     lastMotorCommand = millis();
     if (arg1 == 0 && arg2 == 0) {
+#ifdef QUAD_MOTOR_DRIVER
+      setMotorSpeeds(0, 0, 0, 0);
+#else
       setMotorSpeeds(0, 0);
+#endif
       moving = 0;
     }
     else moving = 1;
     leftPID.TargetTicksPerFrame = arg1;
     rightPID.TargetTicksPerFrame = arg2;
+#ifdef QUAD_MOTOR_DRIVER
+    //back motor have the same speed that fron motor
+    leftBackPID.TargetTicksPerFrame = -arg1;
+    rightBackPID.TargetTicksPerFrame = arg2;
+#endif
     Serial.println("OK"); 
     break;
   case UPDATE_PID:
@@ -260,20 +282,46 @@ void setup() {
     // enable PCINT1 and PCINT2 interrupt in the general interrupt mask
     PCICR |= (1 << PCIE1) | (1 << PCIE2);
   #endif
+  #ifdef ARDUINO_ENC_COUNTER_QUAD
+    //set as inputs
+    DDRD &= ~(1<<LEFT_ENC_PIN_A);
+    DDRD &= ~(1<<LEFT_ENC_PIN_B);
+    DDRC &= ~(1<<LEFT_BACK_ENC_PIN_A);
+    DDRC &= ~(1<<LEFT_BACK_ENC_PIN_B);
+    DDRC &= ~(1<<RIGHT_ENC_PIN_A);
+    DDRC &= ~(1<<RIGHT_ENC_PIN_B);
+    DDRC &= ~(1<<RIGHT_BACK_ENC_PIN_A);
+    DDRC &= ~(1<<RIGHT_BACK_ENC_PIN_B);
+    
+    //enable pull up resistors
+    PORTD |= (1<<LEFT_ENC_PIN_A);
+    PORTD |= (1<<LEFT_ENC_PIN_B);
+    PORTC |= (1<<LEFT_BACK_ENC_PIN_A);
+    PORTC |= (1<<LEFT_BACK_ENC_PIN_B);
+    PORTC |= (1<<RIGHT_ENC_PIN_A);
+    PORTC |= (1<<RIGHT_ENC_PIN_B);
+    PORTC |= (1<<RIGHT_BACK_ENC_PIN_A);
+    PORTC |= (1<<RIGHT_BACK_ENC_PIN_B);
+    
+    // tell pin change mask to listen to left encoder pins PINPORTD and PCINT2
+    PCMSK2 |= (1 << LEFT_ENC_PIN_A)|(1 << LEFT_ENC_PIN_B);
+    // tell pin change mask to listen to right encoder pins and back left encoders PINPORTC and PCINT1
+    PCMSK1 |= (1 << RIGHT_ENC_PIN_A)|(1 << RIGHT_ENC_PIN_B)|(1 << RIGHT_BACK_ENC_PIN_A)|(1 << RIGHT_BACK_ENC_PIN_B)|(1 << LEFT_BACK_ENC_PIN_A)|(1 << LEFT_BACK_ENC_PIN_B);
+    
+    // enable PCINT1 and PCINT2 interrupt in the general interrupt mask
+    PCICR |= (1 << PCIE1) | (1 << PCIE2);
+  #endif
   initMotorController();
   resetPID();
 #endif
 
 /* Attach servos if used */
-  #ifdef USE_SERVOS
-    int i;
-    for (i = 0; i < N_SERVOS; i++) {
-      servos[i].initServo(
-          servoPins[i],
-          stepDelay[i],
-          servoInitPosition[i]);
-    }
-  #endif
+#ifdef USE_SERVOS
+  int i;
+  for (i = 0; i < N_SERVOS; i++) {
+    servos[i].attach(servoPins[i]);
+  }
+#endif
 }
 
 /* Enter the main loop.  Read and parse input from the serial port
@@ -330,17 +378,19 @@ void loop() {
   
   // Check to see if we have exceeded the auto-stop interval
   if ((millis() - lastMotorCommand) > AUTO_STOP_INTERVAL) {;
-    setMotorSpeeds(0, 0);
+#ifdef QUAD_MOTOR_DRIVER
+      setMotorSpeeds(0, 0, 0, 0);
+#else
+      setMotorSpeeds(0, 0);
+#endif
     moving = 0;
   }
-#endif
 
-// Sweep servos
-#ifdef USE_SERVOS
-  int i;
-  for (i = 0; i < N_SERVOS; i++) {
-    servos[i].doSweep();
-  }
 #endif
 }
+
+
+
+
+
 

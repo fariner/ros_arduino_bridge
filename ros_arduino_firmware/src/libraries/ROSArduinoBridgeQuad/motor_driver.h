@@ -4,4 +4,8 @@
 
 void initMotorController();
 void setMotorSpeed(int i, int spd);
-void setMotorSpeeds(int leftSpeed, int rightSpeed);
+#ifdef QUAD_MOTOR_DRIVER
+  void setMotorSpeeds(int leftSpeed, int rightSpeed,int leftBackSpeed,int rightBackSpeed);
+#else
+  void setMotorSpeeds(int leftSpeed, int rightSpeed);
+#endif

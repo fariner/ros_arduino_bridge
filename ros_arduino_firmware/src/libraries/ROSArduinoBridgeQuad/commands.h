@@ -20,7 +20,10 @@
 #define ANALOG_WRITE   'x'
 #define LEFT            0
 #define RIGHT           1
-
+#ifdef ARDUINO_ENC_COUNTER_QUAD
+ #define LEFT_BACK            2
+ #define RIGHT_BACK           3
+#endif
 #endif
 
 

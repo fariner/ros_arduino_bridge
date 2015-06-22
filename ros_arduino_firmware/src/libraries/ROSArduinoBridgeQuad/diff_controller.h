@@ -31,8 +31,15 @@ typedef struct {
 SetPointInfo;
 
 SetPointInfo leftPID, rightPID;
+#ifdef QUAD_MOTOR_DRIVER
+SetPointInfo leftBackPID, rightBackPID;
+#endif
 
 /* PID Parameters */
+//int Kp = 20;
+//int Kd = 12;
+//int Ki = 0;
+//int Ko = 50;
 int Kp = 20;
 int Kd = 12;
 int Ki = 0;
@@ -62,6 +69,21 @@ void resetPID(){
    rightPID.output = 0;
    rightPID.PrevInput = 0;
    rightPID.ITerm = 0;
+#ifdef QUAD_MOTOR_DRIVER
+   leftBackPID.TargetTicksPerFrame = 0.0;
+   leftBackPID.Encoder = readEncoder(LEFT_BACK);
+   leftBackPID.PrevEnc = leftBackPID.Encoder;
+   leftBackPID.output = 0;
+   leftBackPID.PrevInput = 0;
+   leftBackPID.ITerm = 0;
+
+   rightBackPID.TargetTicksPerFrame = 0.0;
+   rightBackPID.Encoder = readEncoder(RIGHT_BACK);
+   rightBackPID.PrevEnc = rightBackPID.Encoder;
+   rightBackPID.output = 0;
+   rightBackPID.PrevInput = 0;
+   rightBackPID.ITerm = 0;
+#endif
 }
 
 /* PID routine to compute the next motor commands */
@@ -72,6 +94,7 @@ void doPID(SetPointInfo * p) {
 
   //Perror = p->TargetTicksPerFrame - (p->Encoder - p->PrevEnc);
   input = p->Encoder - p->PrevEnc;
+  //Serial.println( input );
   Perror = p->TargetTicksPerFrame - input;
 
 
@@ -107,7 +130,10 @@ void updatePID() {
   /* Read the encoders */
   leftPID.Encoder = readEncoder(LEFT);
   rightPID.Encoder = readEncoder(RIGHT);
-  
+#ifdef QUAD_MOTOR_DRIVER
+  leftBackPID.Encoder = readEncoder(LEFT_BACK);
+  rightBackPID.Encoder = readEncoder(RIGHT_BACK);
+#endif  
   /* If we're not moving there is nothing more to do */
   if (!moving){
     /*
@@ -116,15 +142,18 @@ void updatePID() {
     * PrevInput is considered a good proxy to detect
     * whether reset has already happened
     */
-    if (leftPID.PrevInput != 0 || rightPID.PrevInput != 0) resetPID();
+    if (leftPID.PrevInput != 0 || rightPID.PrevInput != 0 || leftBackPID.PrevInput != 0 || rightBackPID.PrevInput != 0) resetPID();
     return;
   }
 
   /* Compute PID update for each motor */
-  doPID(&rightPID);
   doPID(&leftPID);
-
+  doPID(&rightPID);
+#ifdef QUAD_MOTOR_DRIVER
+  doPID(&leftBackPID);
+  doPID(&rightBackPID);
+#endif
   /* Set the motor speeds accordingly */
-  setMotorSpeeds(leftPID.output, rightPID.output);
+  setMotorSpeeds(leftPID.output, rightPID.output,leftBackPID.output, rightBackPID.output);
 }
 
